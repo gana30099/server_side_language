@@ -5,17 +5,20 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
 const fs = require('fs');
-const mysql = require('mysql')
+const mysql = require('mysql');
+var nodemailer = require('nodemailer'); 
 
 const client = mysql.createConnection({
 host: '127.0.0.1',
   port: 3306,
   user: 'root',
   database: 'language_db',
-password: ''
+password: 'Seychelles89&'
 })
 
 client.connect()
+
+
 /*
 var sql = 'INSERT INTO language_db.notes (note, id_language) VALUES ?';
 	var values = [10, 1];
@@ -44,13 +47,15 @@ var sql = 'INSERT INTO language_db.notes (note, id_language) VALUES ?';
 		});	
  */
  
-const users = {};
+const users = [];
+
 let id;
 io.on('connection', (socket) => {
 	const user = { socket : socket };
 	console.log(`Connecté au client ${socket.id}`)
 	
 	socket.on("id", (msg) => { 
+		console.log("id : " + msg);
 		id = msg;
 	});
 	
@@ -236,7 +241,7 @@ io.on('connection', (socket) => {
 				}
 				if (msg.appareil != undefined && msg.appareil === "swing") {
 					console.log("Number of records inserted: " + result.affectedRows);
-					socket.emit("notify", result.affectedRows);
+					//socket.emit("notify", result.affectedRows);
 					console.log(id);
 					io.to(id).emit("notify", result.affectedRows);
 				}
@@ -309,7 +314,149 @@ io.on('connection', (socket) => {
 
 	});
 	
+	
+	socket.on("number_to_delete", (msg) => {
+		console.log("number to delete : " + msg);
+		
+			client.query('SELECT s.id, s.mother, s.other from language_db.sentences s, language_db.languages l where l.id = s.id_language and l.the_language like "English" ORDER BY s.id DESC LIMIT ' + mysql.escape(msg), (err, res, field) => {
+				console.log(JSON.stringify(res, null, 2));
+				socket.emit("json_added", res);
+			});
+
+		
+	});
+	
+	socket.on("delete_several", (msg) => {
+		var sql = 'DELETE FROM language_db.sentences s WHERE s.id IN (?)';
+		var inn = msg.split(" ");
+		var inn = msg.split(' ').map(Number);
+		console.log(inn);
+		inn = removeElementsWithValue(inn, 0);
+		client.query(sql, [inn], function(err, result) {
+			if (err) {
+				throw err;
+				return;
+			}
+			console.log(result.affectedRows);
+		});
+	});
+	
+	socket.on("login", (msg) => {
+		var login = msg.split(" ");
+		console.log(login[0]);
+		
+		client.query('SELECT * from language_db.users u where u.mail like ' + mysql.escape(login[0]), (err, res, field) => {
+			if (err) {
+				throw err;
+				socket.emit("logged", "-1 0");
+
+				return;
+			} else if (res.length == 0) {
+				
+				client.query('INSERT INTO language_db.users (mail, passwordd) VALUES (' + mysql.escape(login[0]) + ', ' + mysql.escape(login[1]) + ')', (err, res) => {
+					var user;
+					var ran = random(1, 9999);
+					client.query('SELECT * from language_db.users u where u.mail like ' + mysql.escape(login[0]), (err, res, field) => {
+						
+						
+
+						if (err) {
+							throw err;
+
+							return;
+						}	
+						user = {
+							id : res[0].id,
+							random : ran
+						}
+						
+						users.push(user);
+						
+					});
+					if (err) {
+						throw err;
+
+						return;
+					}	
+					
+					/* now we have to send an email */
+					var transporter = nodemailer.createTransport({
+					  service: 'one',
+					  auth: {
+						user: 'inbox@gaetannavez.be',
+						pass: 'Seychelles89&'
+					  }
+					});
+
+					var mailOptions = {
+					  from: 'inbox@gaetannavez.be',
+					  to: login[0],
+					  subject: 'valid your inscription',
+					  text: 'Welcome! To continue with the application please enter the number ' + ran + ' to the interface'
+					};
+
+					transporter.sendMail(mailOptions, function(error, info){
+					  if (error) {
+						console.log(error);
+					  } else {
+						console.log('Email sent: ' + info.response);
+					  }
+					}); 
+					
+					socket.emit("logged", "2 " + user.id);
+
+				});
+				
+
+				return;
+			} else {
+				client.query('SELECT * from language_db.users u where u.mail like ' + mysql.escape(login[0]) + ' and u.passwordd like ' + mysql.escape(login[1]), (err, res, field) => {
+					if (err) {
+						throw err;
+						socket.emit("logged", "-1 0");
+
+						return;
+					} else if (res.length == 0) {
+						socket.emit("logged", "-1 0");
+
+						return;
+					}
+					console.log("res : ");
+					console.log(JSON.stringify(res, null, 2));
+					socket.emit("logged", "1 " + res[0].id);
+				});
+			}
+			console.log("res : ");
+			console.log(JSON.stringify(res, null, 2));
+			//socket.emit("logged", "2");
+		});
+		
+		
+	});
+	
+	socket.on("check_pin", (msg) => {
+		var login = msg.split(" ");
+		var us = users.filter(v => id === login[0]);
+		if (us[0].random === login[1]) {
+			socket.emit("pin_ok", "OK");
+			return;
+		}
+		socket.emit("pin_ok", "KO");
+	});
+	
 });
+function random(min, max) {
+	Math.floor(Math.random() * (max - min + 1) + min)
+}
+function removeElementsWithValue(arr, val) {
+    var i = arr.length;
+    while (i--) {
+        if (arr[i] === val) {
+            arr.splice(i, 1);
+        }
+    }
+    return arr;
+}
 	
 
 	
@@ -319,5 +466,6 @@ io.on('connection', (socket) => {
 
 server.listen(3000, () => {  
 	console.log('listening on port:3000');
+	
 });
 
