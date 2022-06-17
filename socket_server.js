@@ -13,7 +13,7 @@ host: '127.0.0.1',
   port: 3306,
   user: 'root',
   database: 'language_db',
-password: 'Seychelles89&'
+password: 
 })
 
 client.connect()
@@ -384,7 +384,7 @@ io.on('connection', (socket) => {
 					  service: 'one',
 					  auth: {
 						user: 'inbox@gaetannavez.be',
-						pass: 'Seychelles89&'
+						pass: ''
 					  }
 					});
 
